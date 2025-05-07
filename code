@@ -1,0 +1,47 @@
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, rand, when
+from pyspark.ml.feature import VectorAssembler
+from pyspark.ml.classification import LogisticRegression
+from pyspark.ml.evaluation import BinaryClassificationEvaluator
+
+# Initialize Spark session
+spark = SparkSession.builder \
+    .appName("PredictiveAnalysisDemo") \
+    .config("spark.driver.memory", "2g") \
+    .getOrCreate()
+
+print("Spark session started for predictive analysis.")
+
+# Step 1: Create synthetic data for binary classification
+num_rows = 1_000_000
+df = spark.range(0, num_rows) \
+    .withColumn("feature1", (rand() * 100)) \
+    .withColumn("feature2", (rand() * 50)) \
+    .withColumn("feature3", (rand() * 10)) \
+    .withColumn("label", when(rand() > 0.7, 1).otherwise(0))
+
+print("Synthetic dataset created.")
+
+# Step 2: Feature Vector Assembly
+feature_cols = ["feature1", "feature2", "feature3"]
+assembler = VectorAssembler(inputCols=feature_cols, outputCol="features")
+assembled_df = assembler.transform(df).select("features", "label")
+
+# Step 3: Split into train and test sets
+train_df, test_df = assembled_df.randomSplit([0.8, 0.2], seed=42)
+
+# Step 4: Train a logistic regression model
+lr = LogisticRegression(featuresCol="features", labelCol="label")
+model = lr.fit(train_df)
+
+print("Logistic Regression model trained.")
+
+# Step 5: Make predictions and evaluate the model
+predictions = model.transform(test_df)
+evaluator = BinaryClassificationEvaluator(labelCol="label")
+accuracy = evaluator.evaluate(predictions)
+
+print(f"Model Accuracy (AUC): {accuracy:.4f}")
+
+# Stop Spark session
+spark.stop()
